@@ -188,7 +188,15 @@ for i in range(8):
 # %%
 pairs_of_texts_non = []
 
-for i in range(8):
+for i in range(i_train):
+    texts = df_sentence[df_sentence['case_']==i]['text'].tolist()
+    for text1 in texts:
+        for text2 in texts:
+            pairs_of_texts.append([text1, text2, 1])
+
+# %%
+pairs_of_texts_non = []
+for i in range(i_train):
     texts1 = df_sentence[df_sentence['case_']==i]['text'].tolist()
     texts2 = df_sentence[df_sentence['case_']!=i]['text'].tolist()
     for tx1 in texts1:
@@ -196,6 +204,23 @@ for i in range(8):
             pairs_of_texts_non.append([tx1, tx2, 0])
 random.seed(42)
 pairs_of_texts_non_sample = random.sample(pairs_of_texts_non, len(pairs_of_texts))
+
+pairs_of_texts_test = []
+for i in range(i_train,8):
+    texts = df_sentence[df_sentence['case_']==i]['text'].tolist()
+    for text1 in texts:
+        for text2 in texts:
+            pairs_of_texts_test.append([text1, text2, 1]
+                                       
+pairs_of_texts_non_test = []
+for i in range(i_train,8):
+    texts1 = df_sentence[df_sentence['case_']==i]['text'].tolist()
+    texts2 = df_sentence[df_sentence['case_']!=i]['text'].tolist()
+    for tx1 in texts1:
+        for tx2 in texts2:
+            pairs_of_texts_non_test.append([tx1, tx2, 0])
+random.seed(42)
+pairs_of_texts_non_sample_test = random.sample(pairs_of_texts_non_test, len(pairs_of_texts_test))
 
 
 
@@ -257,10 +282,9 @@ bert_sc = BertForNextSentencePrediction.from_pretrained(
 bert_sc = bert_sc.cuda()
 
 
-
-
 # %%
 datasetList = pairs_of_texts + pairs_of_texts_non_sample
+dataset_testList = pairs_of_texts_test + pairs_of_texts_non_sample_test # テストデータ
 random.seed(42)
 random.shuffle(datasetList) # ランダムにシャッフル
 # %%
@@ -268,10 +292,8 @@ n = len(datasetList)
 n_train = int(0.8*n)
 n_val = int(0.1*n)
 dataset_trainList = datasetList[:n_train] # 学習データ
-dataset_valList = datasetList[n_train:n_train+n_val] # 検証データ
-dataset_testList = datasetList[n_train+n_val:] # テストデータ
-
-
+dataset_valList = datasetList[n_train:] # 検証データ
+#dataset_testList = datasetList[n_train+n_val:] # テストデータ
 
 
 
