@@ -11,7 +11,6 @@ from transformers import BertJapaneseTokenizer
 import re
 
 # %%
-from IPython import get_ipython
 import random
 import glob
 from tqdm import tqdm
@@ -26,6 +25,10 @@ import codecs
 from bs4 import BeautifulSoup
 import unicodedata
 
+import os
+
+#device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")# TypeError: can't convert cuda:0 device type tensor to numpy.のため
+device = torch.device("cpu") 
 frequent_tags= ['d', 'a', 'f', 'timex3', 't-test', 't-key', 't-val', 'm-key', 'm-val', 'r', 'cc']#抽出するタグ
 
 
@@ -56,7 +59,7 @@ def entities_from_xml(file_name, attrs = True):#attrs=属性を考慮するか�
             pos1 = 0
             pos2 = 0
             for child in elem:#取り出した要素に対して，一つずつ処理する
-                #（タグのないものについても要素として取得されるので，位置(pos)はずれない）                
+#（タグのないものについても要素として取得されるので，位置(pos)はずれない）                
                 text = unicodedata.normalize('NFKC', child.string)#正規化
                 text = text.replace('。', '.')#句点を'.'に統一, sentenceの分割に使うため．
                 pos2 += len(text)#終了位置を記憶
@@ -83,33 +86,23 @@ def entities_from_xml(file_name, attrs = True):#attrs=属性を考慮するか�
 
 
 # %% ファイル名入力
-articles, entities = entities_from_xml('MedTxt-RR-JA-training.xml', attrs=False)#属性考慮するならTrue
-
-
-# %%
-articles
+articles, entities = entities_from_xml('/home/is/mihiro-n/NLP_by_BERT/MedTxt-RR-JA-training.xml', attrs=False)#属性考慮するならTrue
 
 #%%
 
 # %%
 #articleをsentenceにばらす
 import re
-sentences = []
-for _,s in articles:
-    s = [re.sub(r'\n', '', i) for i in re.split(r'\.', s)]
-    s = [i for i in s if i != '']
-    sentences.append(s)
-
-
-# %%
 
 # %%
 id_sentence = []
-for i, sentence in enumerate(sentences):
-    id_sentence.append([i]*len(sentence))
-
+sentences = []
+for i, sentence in articles:
+    id_sentence.append(i)
+    sentences.append(sentence)
 # %%
-
+#print(id_sentence[0])
+#print(sentences[0])
 # %%
 def flatten(t):#リストのネストをはずす
     return [item for sublist in t for item in sublist]
@@ -122,40 +115,32 @@ def df_as_dict(df, col1, key, col2):#dfのあるカラムを辞書として使�
     return df[df[col1]==str(key)][col2].values[0]
 
 # %%
-df_sentence = pd.DataFrame([flatten(id_sentence), flatten(sentences)], index=['articleID', 'text'])
+df_sentence = pd.DataFrame([id_sentence, sentences], index=['articleID', 'text'])
 df_sentence = df_sentence.T
-df_sentence
-
-
 
 # %%
-df = pd.read_csv('MedTxt-RR-JA-CI-training.csv')
+df = pd.read_csv('/home/is/mihiro-n/NLP_by_BERT/MedTxt-RR-JA-CI-training.csv')
 
 # %%
 df_articles = pd.DataFrame(articles, columns=['articleID', 'text'])
-df_articles
 
 # %%
 df_dataset = pd.concat([df_articles, df['case']], axis=1)
 
-
+#print(df_dataset)
+#df_dataset.to_csv("df_dataset.csv")
 
 #  %%
 case_list = []
 for i in df_sentence['articleID']:
     case_list.append(df_as_dict(df_dataset, 'articleID', i, 'case'))
 
-
 # %%
-case_list
-
 
 # %%
 df_sentence['case']=case_list
 
 # %%
-df_sentence
-
 
 # %%
 
@@ -169,30 +154,21 @@ label = df_sentence.groupby('case').size().index.values
 dic_case=dict(zip(label, [i for i in range(8)]))
 
 df_sentence['case_']=[dic_case[i] for i in df_sentence['case'].values]
-
-
-# %%
-df_sentence
-
 # %%
 
+# %%
 df_sentence[df_sentence['case_']==0]
+
 # %%
 pairs_of_texts = []
-for i in range(8):
-    texts = df_sentence[df_sentence['case_']==i]['text'].tolist()
-    for text1 in texts:
-        for text2 in texts:
-            pairs_of_texts.append([text1, text2, 1])
-
-# %%
-pairs_of_texts_non = []
-
+i_train = 6
 for i in range(i_train):
     texts = df_sentence[df_sentence['case_']==i]['text'].tolist()
     for text1 in texts:
         for text2 in texts:
             pairs_of_texts.append([text1, text2, 1])
+
+
 
 # %%
 pairs_of_texts_non = []
@@ -208,10 +184,19 @@ pairs_of_texts_non_sample = random.sample(pairs_of_texts_non, len(pairs_of_texts
 pairs_of_texts_test = []
 for i in range(i_train,8):
     texts = df_sentence[df_sentence['case_']==i]['text'].tolist()
+    
     for text1 in texts:
         for text2 in texts:
-            pairs_of_texts_test.append([text1, text2, 1]
-                                       
+            pairs_of_texts_test.append([text1, text2, 1])
+
+for i in range(i_train,8):
+    texts = df_sentence[df_sentence['case_']==i]['text'].tolist()
+df_sentence_test = df_sentence[(df_sentence['case_']>=i_train) & (df_sentence['case_'] <8)]
+
+#df_sentence_test.to_csv("df_sentence_test.csv")
+
+#df_sentence.to_csv("df_sentence.csv")
+
 pairs_of_texts_non_test = []
 for i in range(i_train,8):
     texts1 = df_sentence[df_sentence['case_']==i]['text'].tolist()
@@ -221,7 +206,6 @@ for i in range(i_train,8):
             pairs_of_texts_non_test.append([tx1, tx2, 0])
 random.seed(42)
 pairs_of_texts_non_sample_test = random.sample(pairs_of_texts_non_test, len(pairs_of_texts_test))
-
 
 
 # %%
@@ -272,14 +256,13 @@ df_dataset['case_']=[dic_case[i] for i in df_dataset['case'].values]
 df_dataset
 """
 
-
 # %%
 # 6-4
 tokenizer = BertJapaneseTokenizer.from_pretrained(MODEL_NAME)
 bert_sc = BertForNextSentencePrediction.from_pretrained(
     MODEL_NAME
 )
-bert_sc = bert_sc.cuda()
+#bert_sc = bert_sc.()
 
 
 # %%
@@ -290,18 +273,16 @@ random.shuffle(datasetList) # ランダムにシャッフル
 # %%
 n = len(datasetList)
 n_train = int(0.8*n)
-n_val = int(0.1*n)
+#n_val = int(0.1*n)
 dataset_trainList = datasetList[:n_train] # 学習データ
 dataset_valList = datasetList[n_train:] # 検証データ
 #dataset_testList = datasetList[n_train+n_val:] # テストデータ
 
 
-
-
 # %%
 # 各データの形式を整える
 def dataset_for_loader(datasetList):
-    max_length = 128
+    max_length = 128 
     dataset_for_loader = []
     for text1, text2, label in datasetList:
         encoding = tokenizer.encode_plus(
@@ -322,8 +303,8 @@ dataset_train = dataset_for_loader(dataset_trainList)
 dataset_val = dataset_for_loader(dataset_valList)
 dataset_test = dataset_for_loader(dataset_testList)
 
+#print(len(dataset_testList))
 # %%
-dataset_test
 
 # %%
 #check_length = []
@@ -348,8 +329,8 @@ g.manual_seed(42)
 dataloader_train = DataLoader(
     dataset_train, batch_size=32, worker_init_fn=seed_worker, generator=g
 ) 
-dataloader_val = DataLoader(dataset_val, batch_size=256, worker_init_fn=seed_worker, generator=g)
-dataloader_test = DataLoader(dataset_test, batch_size=256, worker_init_fn=seed_worker, generator=g)
+dataloader_val = DataLoader(dataset_val, batch_size=32, worker_init_fn=seed_worker, generator=g)
+dataloader_test = DataLoader(dataset_test, batch_size=32, worker_init_fn=seed_worker, generator=g)
 
 # %%
 # 6-14
@@ -442,8 +423,8 @@ print('ベストモデルの検証データに対する損失: ', checkpoint.bes
 
 # %%
 # 6-18
-get_ipython().run_line_magic('load_ext', 'tensorboard')
-get_ipython().run_line_magic('tensorboard', '--logdir ./')
+#get_ipython().run_line_magic('load_ext', 'tensorboard')
+#get_ipython().run_line_magic('tensorboard', '--logdir ./')
 
 # %%
 # 6-19
@@ -453,7 +434,7 @@ print(f'Accuracy: {test[0]["accuracy"]:.2f}')
 
 # %%
 model = BertForNextSentencePrediction_pl.load_from_checkpoint(best_model_path)
-model = model.cuda()
+model = model.to(device)
 
 
 # %%
@@ -464,9 +445,7 @@ model.bert_sc.save_pretrained('./model_transformers')
 bert_sc = BertForNextSentencePrediction.from_pretrained(
     './model_transformers'
 )
-bert_sc = bert_sc.cuda()
-
-
+bert_sc = bert_sc.to(device)
 
 # %%
 text1_list = []
@@ -511,10 +490,10 @@ def encoding_plus_for_logits(dataset_List, num1, num2):#dataset_List=[text1, tex
         encoding_labels.append((dataset_encoding_list[i]['labels']))
 
     #tensorをまとめる
-    dataset_encoding = {'input_ids': torch.stack(encoding_input_ids).cuda(),
-                    'token_type_ids':torch.stack(encoding_token_type).cuda(),
-                    'attention_mask':torch.stack(encoding_attention_mask).cuda(),
-                    'labels':torch.stack(encoding_labels).cuda()
+    dataset_encoding = {'input_ids': torch.stack(encoding_input_ids).to(device),
+                    'token_type_ids':torch.stack(encoding_token_type).to(device),
+                    'attention_mask':torch.stack(encoding_attention_mask).to(device),
+                    'labels':torch.stack(encoding_labels).to(device)
                     }
     
     #分類ラベルを得る
@@ -528,17 +507,17 @@ def encoding_plus_for_logits(dataset_List, num1, num2):#dataset_List=[text1, tex
 
 # %%
 # データの符号化
-labels_predicted_1 = encoding_plus_for_logits(dataset_testList, 0, 4000)
-labels_predicted_2 = encoding_plus_for_logits(dataset_testList, 4000, 8000)
-labels_predicted_3 = encoding_plus_for_logits(dataset_testList, 8000, len(dataset_testList))
+#labels_predicted_1 = encoding_plus_for_logits(dataset_testList, 0, 4000) 
+labels_predicted_1 = encoding_plus_for_logits(dataset_testList, 0, len(dataset_testList))
+#labels_predicted_2 = encoding_plus_for_logits(dataset_testList, 4000, 8000)
+#labels_predicted_3 = encoding_plus_for_logits(dataset_testList, 8000, len(dataset_testList))
 # %%
 labels_predicted_1.tolist()
 
 # %%
-labels_predicted_1
 
 # %%
-labels_predicted = labels_predicted_1.tolist() + labels_predicted_2.tolist() + labels_predicted_3.tolist()
+labels_predicted = labels_predicted_1.tolist()
 # %%
 df_test = pd.DataFrame(dataset_testList, columns=['text1', 'text2', 'label'])
 
@@ -546,7 +525,8 @@ df_test = pd.DataFrame(dataset_testList, columns=['text1', 'text2', 'label'])
 df_test
 # %%
 #predictedを追加
-df_test['predicted']=labels_predicted
+
+df_test['predicted']=labels_predicted_1
 
 
 # %%
@@ -578,9 +558,64 @@ plot.set_ylabel("label")
 DataFrame_classification(df_test["label"], len(df_test)*[0])
 
 # %%
-df_test
+#df_test.to_csv("df_test.csv")
 # %%
 import csv
 
 pd.DataFrame(dataset_test).to_csv("dataset_test_RR.csv")
 # %%
+
+
+#case割り振り
+d_drop = df_test[df_test["predicted"] != 0]
+d_drop=d_drop.reset_index(drop=True)
+df_sentence_test=df_sentence_test.reset_index(drop=True)
+
+
+index_del = []
+for i in range(len(d_drop)):
+  if d_drop["text1"][i] not in df_sentence_test["text"].tolist() or d_drop["text2"][i] not in df_sentence_test["text"].tolist():
+    index_del.append(i)
+  for j in range(len(df_sentence_test)):
+    if d_drop["text1"][i] == df_sentence_test["text"][j]:
+      d_drop["text1"][i] =  df_sentence_test["articleID"][j]
+    if d_drop["text2"][i] == df_sentence_test["text"][j]:
+      d_drop["text2"][i] =  df_sentence_test["articleID"][j]
+d_drop = d_drop.drop(index_del)
+d_drop=d_drop.reset_index(drop=True)
+sentence = []
+sentences = []
+print(d_drop)
+for i in range(len(df_sentence_test)):
+  sentence.append(df_sentence_test["articleID"][i])
+  for j in range(len(d_drop)):
+    if d_drop["text1"][j] in sentence and d_drop["text2"][j] not in sentence:
+      sentence.append(d_drop["text2"][j])
+    if d_drop["text2"][j] in sentence and d_drop["text1"][j] not in sentence:
+      sentence.append(d_drop["text1"][j])
+  sentences.append(sentence)
+  sentence = []
+
+index_del = []
+n =len(sentences)
+for i in range(n-1):
+  for j in range(i+1,n):
+    if set(sentences[i]) == set(sentences[j]):
+      index_del.append(j)
+index_del =list(set(index_del))
+for i in sorted(index_del,reverse=True):
+  sentences.pop(i)
+
+case_n = 0
+df_sentence_test["case_task"] = "NaN"
+for sentence in sentences:
+  for i in range(len(df_sentence_test)):
+    if df_sentence_test["articleID"][i] in sentence:
+      df_sentence_test["case_task"][i] = case_n
+  case_n +=1 
+
+df_csv = df_sentence_test[["articleID","case_task"]]
+df_csv = df_csv.rename(columns={"articleID":"id","case_task":"case"})
+
+#df_sentence_test.to_csv("subtask3_RR.csv",index=False)
+df_csv.to_csv('subtask3_RR.csv',index=False)
